@@ -1,0 +1,173 @@
+#!/usr/bin/env ruby
+#
+# Usage: tweet <url>
+#
+# Uses the most appropriate URL shortener for a given URL, then opens up a
+# Twitter page with the URL inserted into a new Tweet. Uses native URL
+# shorteners for Flickr, Scribd and NPR, and Bit.ly for all others.
+#
+# Written by Tim Morgan. Public domain.
+
+# The location where we store Bit.ly credentials.
+BITLY_FILE_PATH = "#{ENV['HOME']}/.bitly"
+
+# Load required files and the Bit.ly key and stuff
+def bootstrap
+  # configure their bitly access if not already done
+  if not File.exist?(BITLY_FILE_PATH) then
+    puts "You need a Bit.ly API account before you can continue."
+    puts "Sign up at http://bit.ly/a/sign_up and then continue."
+    print "Enter your Bit.ly API login: "
+    bitly_login = gets.chomp.strip
+    p bitly_login
+    print "Enter your Bit.ly API key: "
+    bitly_key = gets.chomp.strip
+    p bitly_key
+    
+    File.open(BITLY_FILE_PATH, 'w') { |f| f.puts bitly_login ; f.puts bitly_key }
+  end
+  
+  # load their bitly credentials from the file
+  File.open(BITLY_FILE_PATH) { |f| $bitly_login = f.gets.chomp ; $bitly_key = f.gets.chomp }
+  
+  # And load required libraries
+  require 'uri'
+  require 'net/http'
+  require 'rexml/document'
+  begin
+    require 'base58'
+  rescue LoadError
+    $stderr.puts "This tool requires the base58 gem: gem install base58"
+    exit(1) # non-zero exit indicates failure on UNIX systems
+  end
+end
+
+# Prints help to standard out.
+def usage
+  puts <<-EOF
+Usage: tweet <url>
+
+Uses the most appropriate URL shortener for a given URL, then opens up a Twitter
+page with the URL inserted into a new Tweet. Uses native URL shorteners for
+Flickr, Scribd and NPR, and Bit.ly for all others.
+
+Written by Tim Morgan. Public domain.
+  EOF
+end
+
+# Determines which URL shortener to use for a URL and then calls it.
+def shorten(url)
+  # turn the url string into a URI object so we can get information about it
+  begin
+    uri = URI.parse(url)
+  rescue URI::InvalidURIError
+    $stderr.puts "#{url} doesn't seem to be a valid URL."
+    exit(1) # non-zero exit indicates failure on UNIX systems
+  end
+  
+  # make sure it's an HTTP(S) URI
+  unless uri.kind_of?(URI::HTTP) or uri.kind_of?(URI::HTTPS)
+    $stderr.puts "#{url} doesn't seem to be a valid URL."
+    exit(1) # non-zero exit indicates failure on UNIX systems
+  end
+  
+  # pick a URL shortener depending on the host
+  return scribd_shorten(url) if uri.host =~ /scribd\.com$/
+  return flickr_shorten(url) if uri.host =~ /flickr\.com$/
+  return npr_shorten(url) if uri.host =~ /npr\.org$/
+  # all others get bitly'd
+  return generic_shorten(url)
+end
+
+# scr.bi short URL: It's really just a fancier name for bit.ly
+def scribd_shorten(url)
+  generic_shorten(url).sub /bit\.ly/, 'scr.bi'
+end
+
+# flic.kr short URL: base-58 encode the photo ID
+def flickr_shorten(url)
+  # we can only shorten photo urls with this method
+  if url =~ /^http:\/\/(www\.)?flickr\.com\/photos\/(.+?)\/(\d+)\/?$/ then
+    photo_id = $3.to_i # it's the third capture
+    "http://flic.kr/p/#{Base58.encode photo_id}"
+  else
+    generic_shorten url
+  end
+end
+
+# n.pr short URL: just take the story ID and put it after the n.pr
+def npr_shorten(url)
+  # we can only shorten story urls with this method
+  if url =~ /^http:\/\/(www\.)?npr\.org\/templates\/story\/story\.php\?storyId=(\d+)$/ then
+    story_id = $2 # it's the second capture
+    "http://n.pr/#{story_id}"
+  else
+    generic_shorten url
+  end
+end
+
+# bit.ly: Use the Bitly REST API to generate a short URL
+def generic_shorten(url)
+  # organize the URL parameters we need for the API call
+  bitly_params = {
+    'login' => $bitly_login,
+    'apiKey' => $bitly_key,
+    'uri' => url,
+    'format' => 'xml'
+  }
+  # turn them into a URL param string like ?foo=bar&foo2=bar2
+  params_str = bitly_params.map { |k, v| URI.escape(k) + '=' + URI.escape(v) }.join('&')
+  # send off our HTTP request
+  uri = URI.parse("http://api.bit.ly/v3/shorten?#{params_str}")
+  response = Net::HTTP.start(uri.host, uri.port) { |http| http.get(uri.path + '?' + uri.query) }
+  # check to make sure we got a 200 OK back from bitly
+  if response.kind_of?(Net::HTTPSuccess) then
+    # build an XML document out of the response body
+    doc = REXML::Document.new(response.body)
+    # check the error code in the response
+    status_code = doc.root.get_elements('/response/status_code').first.text.to_i
+    if status_code == 200 then
+      # we're good, return the URL
+      return doc.root.get_elements('/response/data/url').first.text
+    else
+      # burp up whatever bitly told us
+      $stderr.puts "Bit.ly API server returned error #{doc.root.get_elements('/status_txt').first.text}"
+      exit(1) # non-zero exit indicates failure on UNIX systems
+    end
+  else
+    $stderr.puts "Bit.ly API server returned HTTP status code #{response.status}"
+    exit(1) # non-zero exit indicates failure on UNIX systems
+  end
+end
+
+# Calculates a Twitter URL with a pre-written status and pops open a web browser
+# to that URL.
+def tweet_url(url)
+  twitter_url = "http://www.twitter.com/?status=#{URI.escape url}"
+  # open that URL in the default web browser
+  system "open #{twitter_url}"
+end
+
+# Executed when this tool is run.
+def main
+  # Store the first argument (the only argument) in the url parameter
+  # we have to do this first or the next call to gets (in bootstrap) will eat
+  # the first parameter
+  url = ARGV.shift
+  
+  # do bootstrap-y stuff
+  bootstrap
+  
+  if url.nil? or url == '' then
+    # Show usage information if no arguments were provided
+    usage
+  else
+    # Shorten the URL
+    short_url = shorten(url)
+    # And open Twitter in the web browser with the tweet filled in
+    tweet_url short_url
+  end
+end
+
+# Start with the main method
+main
