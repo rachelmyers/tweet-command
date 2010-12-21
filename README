@@ -4,15 +4,15 @@ It came about because I can't do the math in my head to shorten a flickr url.
 
 To install, 
 
-1. Download using the download button. 
-2. Copy it into your $PATH.  
+1. Navigate your command line to the Downloads folder (or whichever you'd like) and enter:
 
-To be more specific, if you have a /usr/local/bin folder, 
-sudo cp ~/Downloads/tweet_command/tweet /usr/local/bin
+'git clone https://github.com/rachelmyers/tweet-command.git'
 
-Or, if you don't have a /usr/local/bin folder and want one:
-sudo mkdir -p /usr/local/bin
-sudo cp ~/Downloads/tweet_command/tweet /usr/local/bin
+2. Copy the tweet program (_not_ the full tweet-command directory) into your $PATH.  For example, if you put tweet-command into your Downloads folder and have a /usr/local/bin folder, enter:
+
+'sudo cp ~/Downloads/tweet_command/tweet /usr/local/bin'
+
+If you don't have /usr/local/bin, replace it in the command with whichever directory houses your executable scripts.
 
 You should now be able to open a terminal window, enter the command "tweet (longform URL)" and watch as a new browser window opens with the shortened URL ready to be tweeted.
 
@@ -24,4 +24,3 @@ If you screw up entering your bit.ly credentials, Tweet Command won't work.  If 
 rm ~/.bitly
 
 and try again. 
-
