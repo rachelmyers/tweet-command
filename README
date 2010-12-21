@@ -16,7 +16,7 @@ sudo cp ~/Downloads/tweet_command/tweet /usr/local/bin
 
 To use Tweet Command, in a terminal window, use the command "tweet" and paste in the url to shorten.
 
-The first time you use it, you'll be prompted to provide a bit.ly login and API key.  To find your API key, go to bit.ly, make an account if you don't have one, sign in and navigate to user settings.
+The first time you use it, two things will happen that will never happen again.  First, if you don't have base 58 gem, you'll be prompted to install it.  (A common way to shorten urls is to convert them to a base-58 string, and this gem handles the conversion.)  Second, you'll be prompted to provide a bit.ly login and API key.  To find your API key, go to bit.ly, make an account if you don't have one, sign in and navigate to user settings.
 
 Troubleshooting:
 If you screw up entering your bit.ly credentials, Tweet Command won't work.  If this happens, remove the file that stores your credentials:
